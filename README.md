@@ -1,427 +1,195 @@
-Here’s a high-level blueprint for a two-sided support system—one “Customer” side and one “Admin” side—showing the architecture, data-flow and key components you’ll need to build in React (frontend) + Node/Mongo (backend), but you can swap in whatever stacks you prefer.
+# Advanced Two‑Way Support System
+
+An end‑to‑end, two‑sided support platform that handles everything from user intake to AI‑driven assistance, agent workflows, analytics, and feedback loops.
 
 ---
 
-## 1. System Architecture
+## 1. High‑Level Architecture
 
 ```mermaid
 flowchart LR
   subgraph Frontend
-    U[User Support Page]
-    A[Admin Dashboard]
+    U[User Portal]
+    CB[Chatbot Widget]
+    A[Admin Console]
   end
 
   subgraph Backend
-    API[REST / GraphQL API]
+    API[REST/GraphQL API]
     WS[WebSocket Service]
-    DB[(MongoDB Tickets)]
-    Mail[SMTP / Mail Service]
-    Queue[Message Queue]
-  end
-
-  U -->|POST /tickets| API
-  API --> DB
-  API -->|emit ticket.new| WS
-  API --> Mail
-  A -->|GET /tickets| API
-  A -->|POST /tickets/:id/reply| API
-  API --> Queue
-  Queue --> Mail
-  WS <-->|live updates| A
-  WS <-->|live status| U
-```
-
-* **Frontend**
-
-  * **User Support Page**: “Submit Request” form (you already have), plus a “Track Ticket” view where user enters Ticket ID to see status & replies.
-  * **Admin Dashboard**: central ticket list, filters (status, priority, category), detail panel (conversation thread + reply composer), agent-assignment controls.
-
-* **Backend**
-
-  * **API Layer** (Node/Express or GraphQL) to handle create/read/update of tickets, replies, status changes.
-  * **WebSocket Service** (Socket.io or server-sent events) for real-time push of new tickets and replies.
-  * **Database**: a `tickets` collection, each doc:
-
-    ```js
-    {
-      _id,
-      customer: { name, email, phone },
-      category, priority, subject, createdAt, status, 
-      thread: [ { from: "user"|"admin", message, timestamp } ],
-      assignedTo?: agentId
-    }
-    ```
-  * **Mail/Notifications**: SMTP or third-party (SendGrid) to notify user when admin replies.
-  * **Message Queue** (optional) to buffer email jobs.
-
----
-
-## 2. Customer-Facing Flow
-
-1. **Submit Ticket**
-
-   * Fill out form → `POST /tickets` → creates ticket, returns `ticketId`.
-   * Show “Success” modal (you have this) with `ticketId`.
-
-2. **Track & Reply**
-
-   * “Track Ticket” page where user enters ID → `GET /tickets/:id` → displays ticket metadata + thread.
-   * Optionally allow user to append additional messages: `POST /tickets/:id/reply`.
-
-3. **Real-Time Updates**
-
-   * Use WebSocket or polling so if admin responds, user sees reply immediately.
-
----
-
-## 3. Admin-Facing Flow
-
-1. **Dashboard List**
-
-   * On load: `GET /tickets?status=open` → paginated table: columns \[ID, customer, subject, priority, status, createdAt].
-   * Filters: status, priority, category, date-range.
-
-2. **Detail & Reply Panel**
-
-   * Click a row → slide-out panel or modal → fetch `GET /tickets/:id` → show:
-
-     * Customer info
-     * Thread (user & previous replies)
-     * Controls: change status (open, pending, closed), reassign agent, priority/category edit.
-     * Reply textarea → `POST /tickets/:id/reply`.
-
-3. **Live Notifications**
-
-   * Socket.io listener for `ticket.new` so agents see new incoming tickets in real time.
-   * Desktop/browser notification badge.
-
-4. **Agent Assignment & SLA**
-
-   * Auto-assign to agent pools, or manual assign.
-   * Show SLA countdown (e.g. “respond within 24 hrs”) with visual cue.
-
----
-
-## 4. Component & Folder Structure (React)
-
-```
-src/
-├─ api/                   ← axios or graphql clients
-├─ components/
-│  ├─ Customer/
-│  │  ├─ SubmitForm.js
-│  │  ├─ TicketTracker.js
-│  ├─ Admin/
-│  │  ├─ TicketTable.js
-│  │  ├─ TicketDetailPanel.js
-│  │  ├─ FiltersBar.js
-│  ├─ UI/                 ← Buttons, Modals, Inputs, Icons
-├─ contexts/              ← Auth, WebSocketContext
-├─ hooks/                 ← useTickets, useWebSocket
-├─ pages/
-│  ├─ /support            ← customer
-│  │  ├─ index.js
-│  ├─ /admin              ← admin
-│  │  ├─ index.js
-└─ utils/                 ← date formatting, notification helpers
-```
-
-* **State Management**: React Context or Redux for global (tickets list, auth, socket).
-* **Styling**: Tailwind CSS (as you’re using), keep design tokens in a single file for consistency.
-
----
-
-## 5. API Endpoints (REST Example)
-
-| Method | Path                 | Body / Query                        | Function                                  |
-| ------ | -------------------- | ----------------------------------- | ----------------------------------------- |
-| POST   | /tickets             | `{ customer, subject, message… }`   | Create ticket                             |
-| GET    | /tickets             | `?status=open&priority=high&page=…` | List & filter tickets                     |
-| GET    | /tickets/\:id        | —                                   | Get single ticket with full thread        |
-| POST   | /tickets/\:id/reply  | `{ from: "admin", message }`        | Append reply & trigger notification/email |
-| PATCH  | /tickets/\:id/status | `{ status: "closed" }`              | Change ticket status                      |
-| PATCH  | /tickets/\:id/assign | `{ agentId: "…" }`                  | Assign to agent                           |
-
----
-
-## 6. Data-Flow & Real-Time
-
-1. **User submits** → API writes to DB → emits `ticket.new` over WebSocket + sends confirmation email.
-2. **Admin dashboard** hears `ticket.new` → highlights new row.
-3. **Admin replies** → API updates DB thread → enqueues email to user + emits `ticket.reply` to both admin & user socket rooms.
-4. **User socket** receives `ticket.reply` → appends to thread view live.
-
----
-
-## 7. Scaling & Extras
-
-* **Pagination & Caching**: use cursor-based pagination for large ticket volume.
-* **Search & Full-Text**: index subject/message in Mongo or add ElasticSearch for advanced queries.
-* **RBAC**: protect admin routes with JWT + roles.
-* **Attachments**: support file uploads by streaming to S3 and storing link in thread.
-* **Analytics**: track metrics (avg response time, tickets per category) and expose in admin “Stats” panel.
-
----
-
-With this foundation you can evolve a simple React form into a full-featured support center. Feel free to ask for deeper dives on any section (e.g. sample Express code, WebSocket setup, detailed React hook patterns, or DB migration scripts)!
-
-
----
-#IDea 2
---
-# Dvika Support Center Architecture & Layout
-
-> *External brand: “Dvika Care”*
-> Support email: **[dvika.care@gmail.com](mailto:dvika.care@gmail.com)**
-
----
-
-## Two-Sided Support System
-
-**External User (Dvika Care)**
-
-* Submit support requests via web form, email, chat widget, or API
-* Track ticket status and replies
-* Browse FAQs and Knowledge Base
-
-**Internal Admin & Agents**
-
-* View and triage incoming tickets
-* Reply, escalate, and manage SLAs
-* Access analytics and reporting dashboards
-
----
-
-## Ticket Lifecycle & Statuses
-
-1. **New** – just created (via web, email, widget, or API)
-2. **Open / Triaging** – agent picks up for initial assessment
-3. **In Progress** – actively being worked
-4. **On Hold / Waiting on Customer** – blocked until user supplies info
-5. **Escalated** – handed off to L2 or engineering
-6. **Resolved** – solution provided; awaiting confirmation
-7. **Closed** – confirmed resolved or auto-closed after X days
-
-> *Each status change triggers internal notifications and ticks against SLA timers.*
-
----
-
-## Channels of Intake
-
-* **Dvika Care Bot** (in-app & chat widget)
-* **Email** ([support@dvika.care](mailto:support@dvika.care)@gmail.com)
-* **Slack Slash-Command** (`/dvika-care new`)
-* **API / Webhook** (partner integrations)
-
-> *All incoming items auto-create tickets with captured fields (user, issue type, priority, attachments).*
-
----
-
-## Triage & Routing Rules
-
-* **Keyword-Based Tagging** (e.g. “billing” → Billing queue)
-* **Priority Mapping** (P1 bugs escalate immediately)
-* **Round-Robin or Load-Based Assignment** among available agents
-* **Auto-Escalation** if not picked up within SLA window
-
----
-
-## Internal Dashboard & Views
-
-| View                  | Visible To           | Key Columns                        |
-| --------------------- | -------------------- | ---------------------------------- |
-| My Open Tickets       | Support Agents       | Ticket #, Subject, Priority, Age   |
-| All Tickets           | Managers & Admin     | + Queue, Assigned To, SLA Status   |
-| Escalation Queue      | Managers & Engineers | + Origin Agent, Escalation Reason  |
-| SLA Breaches          | Managers             | Ticket #, Breach Type, Breach Time |
-| Knowledge Suggestions | All                  | Auto-suggested KB article links    |
-
----
-
-## Knowledge Base Integration
-
-* Contextual article suggestions as tickets are typed
-* One-click “Insert KB link” in agent replies
-* Feedback loop: agents flag outdated articles or suggest new ones
-
----
-
-## Automations & Macros
-
-* Canned responses for FAQs (onboarding, pricing, API keys)
-* Macros to update status + add internal note + notify user
-* SLA reminders: Slack pings 30 min before breach
-* Auto-close inactive tickets (> 7 days) with customer nudge
-
----
-
-## Notifications & Escalations
-
-* Slack alerts in `#dvika-care-alerts`
-* Email digests for managers (daily summary of new, breached, escalated)
-* Push notifications in internal app
-
----
-
-## Reporting & Analytics
-
-* First response time (avg. by agent / queue)
-* Resolution time (avg. and distribution)
-* Ticket volume trends (daily / weekly)
-* CSAT surveys embedded in resolved tickets
-* Heatmaps of peak request hours
-
-> *Embed dashboards (e.g. Metabase, Data Studio) into the Admin view.*
-
----
-
-## System Architecture
-
-```mermaid
-flowchart LR
-  subgraph Frontend
-    U[User Support Page]
-    A[Admin Dashboard]
-  end
-
-  subgraph Backend
-    API[REST / GraphQL API]
-    WS[WebSocket Service]
-    DB[(MongoDB Tickets)]
-    Mail[SMTP / Mail Service]
-    Queue[Message Queue]
+    NLP[NLP & AI Engine]
+    DB[(MongoDB)]
+    KB[(Knowledge Base)]
+    Mail[Email Service]
+    Queue[Job Queue]
+    Analytics[Analytics Service]
   end
 
   U -->|POST /tickets| API --> DB
   API -->|emit ticket.new| WS
   API --> Mail
+  CB -->|NLP Query| NLP --> KB
+  NLP -->|Suggest| CB
+  CB -->|Low Confidence| API
+  API --> DB
   A -->|GET /tickets| API
   A -->|POST /tickets/:id/reply| API --> DB
   API --> Queue --> Mail
   WS <-->|live updates| A
   WS <-->|live updates| U
+  DB --> Analytics
+  Analytics --> A
+  Analytics --> Dashboard[Reporting UI]
 ```
 
 ---
 
-## Customer-Facing Flow
+## 2. Permission‑Based Routing Flow
 
-1. **Submit Ticket**
+```mermaid
+flowchart TD
+  T[New Ticket]
+  T --> C{Category Tagging}
+  C -->|Billing| Q1[Billing Queue]
+  C -->|Tech|  Q2[Tech Support]
+  C -->|Account|Q3[Account Queue]
 
-   * Fill out form → `POST /tickets` → server creates ticket, returns `ticketId`
-   * Show “Success” modal with `ticketId`
+  subgraph Assignment
+    Q1 & Q2 & Q3 --> A{Check Available Agents}
+    A -->|Free| Assign[Assign Round‑Robin]
+    A -->|None| Esc[Escalate to Manager]
+  end
 
-2. **Track & Reply**
+  Assign --> V{Role Check}
+  Esc --> V
 
-   * User enters ID on “Track Ticket” page → `GET /tickets/:id` → displays metadata + thread
-   * Optionally allow user to append messages: `POST /tickets/:id/reply`
+  V -->|L1 Agent| Handle[Handle & Reply]
+  V -->|L2 Engineer| EscEng[Forward to Engineering]
+  V -->|Manager| Review[Manager Review]
 
-3. **Real-Time Updates**
-
-   * WebSocket or polling to push admin replies immediately to user
-
----
-
-## Admin-Facing Flow
-
-1. **Dashboard List**
-
-   * `GET /tickets?status=open` → paginated table: \[ID, customer, subject, priority, status, createdAt]
-   * Filters: status, priority, category, date-range
-
-2. **Detail & Reply Panel**
-
-   * Click row → slide-out modal → `GET /tickets/:id` → show:
-
-     * Customer info
-     * Conversation thread
-     * Controls: change status, reassign agent, edit priority/category
-     * Reply textarea → `POST /tickets/:id/reply`
-
-3. **Live Notifications**
-
-   * Socket.io listener for `ticket.new` to highlight new tickets
-   * Desktop/browser notification badge
-
-4. **Agent Assignment & SLA**
-
-   * Auto-assign or manual assign to agent pools
-   * SLA countdown indicator (e.g. “respond within 24 hrs”)
-
----
-
-## Component & Folder Structure (React)
-
-```
-src/
-├─ api/                   # axios or GraphQL clients
-├─ components/
-│  ├─ User/               # Dvika Care portal
-│  │  ├─ SubmitForm.js
-│  │  ├─ TicketTracker.js
-│  ├─ Admin/              # Internal dashboard
-│  │  ├─ TicketTable.js
-│  │  ├─ TicketDetail.js
-│  │  ├─ FiltersBar.js
-│  ├─ UI/                 # shared Buttons, Modals, Inputs
-├─ contexts/              # Auth, WebSocketContext
-├─ hooks/                 # useTickets, useWebSocket
-├─ pages/
-│  ├─ /support            # External portal
-│  ├─ /admin              # Admin console
-└─ utils/                 # formatting, notifications
+  Handle & EscEng & Review --> P[In Progress]
 ```
 
----
+**Key steps:**
 
-## API Endpoints (REST Example)
-
-| Method | Path                  | Body / Query                       | Purpose                              |
-| ------ | --------------------- | ---------------------------------- | ------------------------------------ |
-| POST   | `/tickets`            | `{ customer, subject, message… }`  | Create ticket                        |
-| GET    | `/tickets`            | `?status=open&priority=high&page…` | List & filter tickets                |
-| GET    | `/tickets/:id`        | —                                  | Fetch single ticket with full thread |
-| POST   | `/tickets/:id/reply`  | `{ from: "admin", message }`       | Append reply & notify user via email |
-| PATCH  | `/tickets/:id/status` | `{ status: "closed" }`             | Change ticket status                 |
-| PATCH  | `/tickets/:id/assign` | `{ agentId: "…" }`                 | Assign ticket to an agent            |
+1. Automatic category detection via keywords/NLP.
+2. Round‑robin assignment among free agents.
+3. Fallback escalation when no agents are available.
+4. Role‑driven branch: L1 → direct handling, L2 → engineering, Manager → oversight.
 
 ---
 
-## Data-Flow & Real-Time
+## 3. Real‑Time & Two‑Way Communication
 
-1. **User submits** → API writes to DB → emits `ticket.new` via WebSocket + sends confirmation email
-2. **Admin dashboard** hears `ticket.new` → highlights new row
-3. **Admin replies** → API updates DB thread → enqueues email + emits `ticket.reply` to both admin & user sockets
-4. **User socket** receives `ticket.reply` → appends to thread live
+1. **WebSocket Events**:
+
+   * `ticket.new` → Admin & User notified instantly.
+   * `ticket.update` → Push status changes & replies.
+2. **Chatbot Widget**:
+
+   * Shows dynamic suggestions from AI engine as user types.
+   * If confidence > threshold, auto‑respond.
+   * Else, create ticket and embed CSAT prompt.
+3. **User Portal**:
+
+   * Live thread view with instant scroll to new replies.
+   * Ability to send follow‑up messages.
 
 ---
 
-## Scaling & Extras
+## 4. Analytics & Reporting Flow
 
-* Cursor-based pagination for large ticket volumes
-* Full-text search (MongoDB indexes or Elasticsearch)
-* RBAC via JWT + role checks
-* File attachments (S3 + link in thread)
-* Analytics panel for metrics (avg. response time, tickets by category)
+```mermaid
+flowchart LR
+  DB --> M[Metrics Processor]
+  M -->|Store| StoreDB[(Analytics DB)]
+  StoreDB --> Dash[Admin Dashboard]
+
+  subgraph Metrics
+    T1[First Response Time]
+    T2[Total Resolution Time]
+    T3[Ticket Volume]
+    T4[SLA Breaches]
+    T5[CSAT Scores]
+  end
+  T1 & T2 & T3 & T4 & T5 --> M
+```
+
+**Dashboards show:**
+
+* Average & distribution of first‑response and resolution times.
+* Daily/weekly ticket volumes by category.
+* SLA breach counts and trending.
+* CSAT rating averages and recent feedback.
 
 ---
 
-## Roadmap & Future Enhancements
+## 5. Self‑Learning Chatbot Flow
 
-* AI-assisted triage (NLP auto-categorization & prioritization)
-* Embedded screen-recording attachments for user demos
-* Mobile support console (iOS/Android)
-* Cross-team ticket transfer (Sales, Engineering)
-* Multi-language support via translation integration
+```mermaid
+flowchart TB
+  UQ[User Query]
+  UQ --> AI[NLP & ML Engine]
+  AI --> KB
+  KB --> SA[Suggested Answer]
+  AI --> TC{Confidence ≥ Threshold?}
+  TC -->|Yes| AutoResp[Auto‑send Answer]
+  TC -->|No| CreateTicket
+  CreateTicket --> TicketDB[(Support DB)]
+  TicketDB --> Agt[Agent Reviews]
+
+  Agt --> FA[Final Answer]
+  FA --> Resp[Send to User]
+  FA --> FB{Feedback?}
+  FB --> Learn[Learning Module]
+  Learn --> AI
+```
+
+**Flow details:**
+
+1. **Intake**: Chatbot uses AI to match intent and fetch KB articles.
+2. **Auto‑Response**: High‑confidence replies go out immediately.
+3. **Ticket Creation**: Low‑confidence cases are routed to agents.
+4. **Agent Review**: Agents refine responses and send back.
+5. **Feedback Loop**: User/agent feedback retrains models for better future suggestions.
+
+---
+
+## 6. SLA & Escalation Automation
+
+* **SLA Timer** starts on ticket creation.
+* **Reminder Ping**: Slack/email notification 30 minutes before SLA breach.
+* **Auto‑Escalation**: Unaddressed tickets move to higher level or manager.
+* **Auto‑Close**: Resolved tickets inactive for 7 days get closed with final nudge.
+
+---
+
+## 7. Knowledge Base Integration
+
+* **Contextual Suggestions**: Agents see relevant articles in reply composer.
+* **One‑Click Insert**: Add KB links directly to replies.
+* **Article Feedback**: Agents can flag outdated or missing articles.
+* **Analytics Sync**: Track which KB articles reduce ticket creation.
+
+---
+
+## 8. Security & Permissions
+
+* **JWT Authentication** for API access.
+* **Role‑Based Access Control**:
+
+  * **Agents**: Read/Reply on assigned tickets only.
+  * **Managers**: Full ticket visibility and reassignment rights.
+  * **Engineers**: View escalated tickets, comment only.
+  * **Admins**: Configuration and data export capabilities.
 
 ---
 
 ## Next Steps
 
-1. Align on statuses, SLAs, and naming conventions
-2. Create wireframes for Dvika Care portal and Admin console
-3. Define MongoDB schema for tickets, threads, SLAs
-4. Finalize API contracts for all intake channels
-5. Scaffold frontend (React) and backend (Express + MongoDB)
-6. Run pilot with core flows and gather feedback
-
+1. Finalize API specs and MongoDB schema.
+2. Scaffold frontend widgets and backend routes.
+3. Integrate WebSocket server (Socket.io).
+4. Plug in AI/NLP engine & KB service.
+5. Build analytics pipelines and dashboards.
+6. Test end‑to‑end with pilot user group.
