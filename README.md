@@ -352,9 +352,3 @@ Else:
 
 ---
 
-**This system provides a scalable, fair, and fully auditable ticket assignment structure with static department logic and no need for a dedicated "agent" role.
-If you want additional code samples for authentication/authorization, dashboard UIs, batch assignment, analytics, or Slack/email integration, let me know!**
-
----
-
-This solution, with comments and code, is easily 1000+ lines in full backend implementation. If you want this split into multiple files and ready to run, ask for a ZIP or multi-file breakdown.
