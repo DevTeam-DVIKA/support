@@ -1,6 +1,3 @@
-Excellent clarification!
-Here is a **detailed, production-ready, and fully annotated plan** for a **support ticket assignment system** when:
-
 * **All internal users have `role: 'user' | 'admin' | 'superadmin'`**
 * **Department (e.g., 'support', 'IT', 'HR', 'Finance') is just a String field** (chosen from a fixed list like `['support', 'IT', ...]`)
 * **Department list is defined in code or config, not in DB**
